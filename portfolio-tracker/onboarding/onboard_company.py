@@ -32,7 +32,7 @@ def propose_schema(email_text: str) -> dict:
     """Send a sample email to Claude and get back a proposed metric schema."""
     prompt = ONBOARDING_PROMPT.format(email_text=email_text)
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )

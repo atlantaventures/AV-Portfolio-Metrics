@@ -44,7 +44,7 @@ def extract_metrics(email_text: str, schema: dict) -> dict:
         email_text=email_text,
     )
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
