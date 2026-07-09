@@ -13,9 +13,11 @@ Below is a sample email from a founder. Propose a metric schema: the distinct, q
 
 Rules:
 - Only include metrics clearly stated with a number in this email. Do not invent metrics that aren't present.
+- Only include metrics about this company's OWN performance — not general market/industry data, benchmarks, or competitor figures the founder cites for context (e.g. an industry volume index, fuel prices, a market-wide conversion rate). If in doubt whether a number is about this company vs. the broader market, leave it out.
+- Don't overlook simple headcount/team-size mentions ("we're now a team of 12") — these are metrics too.
 - Use snake_case names (e.g. "monthly_revenue", "units_sold", "burn_rate").
 - For units, use one of: USD, count, percent, USD_per_month — or another short label if none fit.
-- Note any aliases: alternate phrases the founder used for the same metric (e.g. "topline" for revenue), so future emails with different wording still map correctly.
+- Note any aliases: alternate phrases the founder used for the same metric (e.g. "topline" for revenue), so future emails with different wording still map correctly. Each alias must map to exactly one metric — if the founder reports the same abbreviation at multiple levels (e.g. a company-wide number and a per-segment number both called "GR"), do not give both metrics the same alias; keep the metric names and aliases distinct enough to tell them apart.
 
 Respond with ONLY valid JSON, no markdown fences, no preamble, in this exact shape:
 {{
