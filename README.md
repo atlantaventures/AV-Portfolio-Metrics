@@ -7,7 +7,6 @@ needs your Google account and your Anthropic API key.
 ## File map
 
 ```
-portfolio-tracker/
 ├── config/
 │   ├── prompts.py          # the two prompt templates, already written
 │   ├── credentials.json    # Gmail OAuth client — you download this (step 2)
@@ -27,7 +26,6 @@ portfolio-tracker/
 ## 1. Local setup
 
 ```bash
-cd portfolio-tracker
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
