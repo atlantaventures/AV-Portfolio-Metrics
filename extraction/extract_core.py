@@ -45,10 +45,12 @@ def extract_metrics(email_text: str, schema: dict) -> dict:
     )
     response = client.messages.create(
         model="claude-sonnet-5",
-        max_tokens=1024,
+        max_tokens=2048,
+        thinking={"type": "disabled"},
         messages=[{"role": "user", "content": prompt}],
     )
-    return _parse_json_response(response.content[0].text)
+    text = next(block.text for block in response.content if block.type == "text")
+    return _parse_json_response(text)
 
 
 def rows_for_sheet(company: str, extraction_result: dict) -> list[list]:

@@ -28,16 +28,27 @@ from prompts import ONBOARDING_PROMPT  # noqa: E402
 client = Anthropic()  # reads ANTHROPIC_API_KEY from environment
 
 
+def _parse_json_response(raw: str) -> dict:
+    """Defensive parsing — strip markdown fences if the model adds them despite instructions."""
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```")[1]
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
+    return json.loads(cleaned.strip())
+
+
 def propose_schema(email_text: str) -> dict:
     """Send a sample email to Claude and get back a proposed metric schema."""
     prompt = ONBOARDING_PROMPT.format(email_text=email_text)
     response = client.messages.create(
         model="claude-sonnet-5",
-        max_tokens=1024,
+        max_tokens=2048,
+        thinking={"type": "disabled"},
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = response.content[0].text.strip()
-    return json.loads(raw)
+    text = next(block.text for block in response.content if block.type == "text")
+    return _parse_json_response(text)
 
 
 def main():
