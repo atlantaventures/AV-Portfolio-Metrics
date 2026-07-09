@@ -37,6 +37,8 @@ EXTRACTION_PROMPT = """You are extracting structured performance data from a fou
 This company's known metric schema (built during onboarding) is:
 {schema_json}
 
+This email was sent on: {email_date}
+
 Below is a new update email from this founder. Extract every metric explicitly stated in this email.
 
 Rules:
@@ -44,11 +46,11 @@ Rules:
 - Only extract metrics about this company's OWN performance — not general market/industry data, benchmarks, or competitor figures the founder cites for context (e.g. an industry volume index, fuel prices, a market-wide conversion rate), even if a known metric or a "new metric" would otherwise match. If in doubt whether a number is about this company vs. the broader market, leave it out.
 - If the email states a metric NOT in the known schema, still extract it — assign it a sensible new snake_case name. Don't discard it just because it's new.
 - If the email restates a known metric using different wording than the schema's aliases, map it to the existing metric name rather than creating a duplicate.
-- Determine the reporting period from the email if possible (e.g. "March 2026", "Q1 2026", "week of April 6"). If genuinely not stated, use "unknown".
+- Determine the reporting period this email covers, using the email's send date above to resolve relative or year-less mentions (e.g. an email sent in 2026 that just says "June" means June 2026). Normalize to one of: "YYYY-MM" for a specific month, "YYYY-Q#" for a quarter, "YYYY-Www" for a specific week. If genuinely not stated or determinable, use "unknown".
 
 Respond with ONLY valid JSON, no markdown fences, no preamble, in this exact shape:
 {{
-  "period": "<period this email covers>",
+  "period": "<normalized period this email covers>",
   "metrics": [
     {{"metric": "<name>", "value": <number>, "unit": "<unit>", "is_new_metric": <true or false>}}
   ]

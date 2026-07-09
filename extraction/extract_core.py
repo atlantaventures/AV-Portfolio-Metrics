@@ -28,11 +28,11 @@ def _parse_json_response(raw: str) -> dict:
     return json.loads(cleaned.strip())
 
 
-def extract_metrics(email_text: str, schema: dict) -> dict:
+def extract_metrics(email_text: str, schema: dict, email_date: str = "unknown") -> dict:
     """
     Returns:
         {
-          "period": "March 2026",
+          "period": "2026-03",
           "metrics": [
             {"metric": "revenue", "value": 82000, "unit": "USD", "is_new_metric": false},
             ...
@@ -41,6 +41,7 @@ def extract_metrics(email_text: str, schema: dict) -> dict:
     """
     prompt = EXTRACTION_PROMPT.format(
         schema_json=json.dumps(schema, indent=2),
+        email_date=email_date,
         email_text=email_text,
     )
     response = client.messages.create(

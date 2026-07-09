@@ -53,7 +53,7 @@ def run(spreadsheet_id: str) -> None:
             continue
 
         for email in emails:
-            result = extract_metrics(email["body"], company["schema"])
+            result = extract_metrics(email["body"], company["schema"], email_date=email["date"])
             rows = rows_for_sheet(company["company"], result)
             append_metric_rows(spreadsheet_id, rows)
             total_rows_written += len(rows)
