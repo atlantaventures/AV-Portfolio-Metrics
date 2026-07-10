@@ -6,3 +6,4 @@ config/credentials.json
 config/token.json
 config/service_account.json
 config/last_run.json
+dashboard/data.json

@@ -23,24 +23,33 @@ from anthropic import Anthropic
 
 load_dotenv()
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
-from prompts import ONBOARDING_PROMPT  # noqa: E402
+from prompts import ONBOARDING_PROMPT, CATEGORY_GUIDE, GOOD_DIRECTION_GUIDE  # noqa: E402
+from json_utils import parse_json_response  # noqa: E402
 
 client = Anthropic()  # reads ANTHROPIC_API_KEY from environment
 
 
-def _parse_json_response(raw: str) -> dict:
-    """Defensive parsing — strip markdown fences if the model adds them despite instructions."""
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("```")[1]
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-    return json.loads(cleaned.strip())
+def propose_schema_from_sender(sender_email: str, subject_hint: str | None = None) -> dict:
+    """
+    Auto-onboarding path — pulls the sender's most recent real email via Gmail and proposes
+    a schema from it directly, so a new company never needs a human to hand-supply a sample.
+    subject_hint (the company name) disambiguates when multiple companies share one sender,
+    e.g. a forwarding inbox during testing.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "extraction"))
+    from gmail_client import fetch_most_recent_email  # noqa: E402
+
+    email = fetch_most_recent_email(sender_email, subject_hint=subject_hint)
+    if not email:
+        raise ValueError(f"No emails found from {sender_email} to onboard from.")
+    return propose_schema(email["body"])
 
 
 def propose_schema(email_text: str) -> dict:
     """Send a sample email to Claude and get back a proposed metric schema."""
-    prompt = ONBOARDING_PROMPT.format(email_text=email_text)
+    prompt = ONBOARDING_PROMPT.format(
+        email_text=email_text, category_guide=CATEGORY_GUIDE, good_direction_guide=GOOD_DIRECTION_GUIDE
+    )
     response = client.messages.create(
         model="claude-sonnet-5",
         max_tokens=2048,
@@ -48,7 +57,7 @@ def propose_schema(email_text: str) -> dict:
         messages=[{"role": "user", "content": prompt}],
     )
     text = next(block.text for block in response.content if block.type == "text")
-    return _parse_json_response(text)
+    return parse_json_response(text)
 
 
 def main():

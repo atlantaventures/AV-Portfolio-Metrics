@@ -21,6 +21,26 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 TOKEN_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "token.json")
 CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "credentials.json")
 
+# Dropped before matching a company name against a subject line — founders write the brand
+# name, rarely the full formal name (e.g. "Carpool", not "Carpool Logistics").
+_GENERIC_COMPANY_WORDS = {
+    "the", "inc", "llc", "corp", "corporation", "co", "company", "group",
+    "technologies", "tech", "labs", "logistics", "solutions", "systems", "holdings",
+}
+
+
+def _subject_query(company_name: str) -> str:
+    """
+    Builds a lenient Gmail subject filter from a company name: strips generic corporate
+    words and OR's together whatever's left, instead of requiring the full name verbatim.
+    """
+    words = [w for w in company_name.split() if w.lower() not in _GENERIC_COMPANY_WORDS]
+    if not words:
+        words = company_name.split()
+    if len(words) == 1:
+        return f"subject:{words[0]}"
+    return "subject:(" + " OR ".join(words) + ")"
+
 
 def get_gmail_service():
     creds = None
@@ -37,13 +57,19 @@ def get_gmail_service():
     return build("gmail", "v1", credentials=creds)
 
 
-def fetch_new_emails(sender_email: str, since: datetime) -> list[dict]:
+def fetch_new_emails(sender_email: str, since: datetime, subject_hint: str | None = None) -> list[dict]:
     """
     Returns a list of {"id": ..., "subject": ..., "body": ..., "date": ...} for messages
     from `sender_email` received after `since`.
+
+    subject_hint (e.g. the company name) narrows the query further — needed when multiple
+    companies share one sender address, like a forwarding inbox during testing. Optional
+    because in the real shape (founders emailing directly), sender alone is unambiguous.
     """
     service = get_gmail_service()
     query = f"from:{sender_email} after:{int(since.timestamp())}"
+    if subject_hint:
+        query += " " + _subject_query(subject_hint)
     results = service.users().messages().list(userId="me", q=query).execute()
     message_ids = results.get("messages", [])
 
@@ -54,6 +80,24 @@ def fetch_new_emails(sender_email: str, since: datetime) -> list[dict]:
         ).execute()
         emails.append(_parse_message(msg))
     return emails
+
+
+def fetch_most_recent_email(sender_email: str, subject_hint: str | None = None) -> dict | None:
+    """
+    Returns the single most recent email from `sender_email`, or None if there isn't one.
+    Used for auto-onboarding — pulling a real sample to propose a schema from, without a
+    human having to hand-supply one. See fetch_new_emails for what subject_hint is for.
+    """
+    service = get_gmail_service()
+    query = f"from:{sender_email}"
+    if subject_hint:
+        query += " " + _subject_query(subject_hint)
+    results = service.users().messages().list(userId="me", q=query, maxResults=1).execute()
+    message_ids = results.get("messages", [])
+    if not message_ids:
+        return None
+    msg = service.users().messages().get(userId="me", id=message_ids[0]["id"], format="full").execute()
+    return _parse_message(msg)
 
 
 def _parse_message(msg: dict) -> dict:

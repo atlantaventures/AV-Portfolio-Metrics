@@ -14,18 +14,9 @@ from anthropic import Anthropic
 load_dotenv()
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 from prompts import EXTRACTION_PROMPT  # noqa: E402
+from json_utils import parse_json_response  # noqa: E402
 
 client = Anthropic()
-
-
-def _parse_json_response(raw: str) -> dict:
-    """Defensive parsing — strip markdown fences if the model adds them despite instructions."""
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("```")[1]
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-    return json.loads(cleaned.strip())
 
 
 def extract_metrics(email_text: str, schema: dict, email_date: str = "unknown") -> dict:
@@ -51,7 +42,7 @@ def extract_metrics(email_text: str, schema: dict, email_date: str = "unknown") 
         messages=[{"role": "user", "content": prompt}],
     )
     text = next(block.text for block in response.content if block.type == "text")
-    return _parse_json_response(text)
+    return parse_json_response(text)
 
 
 def rows_for_sheet(company: str, extraction_result: dict) -> list[list]:

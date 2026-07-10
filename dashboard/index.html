@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portfolio Pulse</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #EFF2ED;
+    --surface: #FFFFFF;
+    --ink: #1B231F;
+    --ink-soft: #62705F;
+    --ink-faint: #8B9689;
+    --line: #DCE3D8;
+    --teal: #2E6F63;
+    --brick: #A6483A;
+    --brick-soft: #F7E9E6;
+    --green-pos: #3C7A52;
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app { max-width: 1080px; margin: 0 auto; padding: 40px 28px 80px; }
+
+  header { margin-bottom: 28px; }
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 32px;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  .sub {
+    color: var(--ink-soft);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sub .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); display: inline-block; }
+
+  nav.tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 24px;
+    overflow-x: auto;
+  }
+  .tab {
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--ink-soft);
+    background: none;
+    border: none;
+    padding: 10px 16px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.active { color: var(--ink); border-bottom-color: var(--teal); }
+
+  .flag-banner {
+    background: var(--brick-soft);
+    border: 1px solid #E3C6BF;
+    color: #7A3327;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13.5px;
+    margin-bottom: 20px;
+    display: none;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .flag-banner .label {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--brick);
+    flex-shrink: 0;
+  }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .kpi-label {
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .kpi-value {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 4px;
+  }
+  .kpi-delta { font-size: 12px; font-weight: 500; font-family: var(--font-mono); }
+  .kpi-delta.pos { color: var(--green-pos); }
+  .kpi-delta.neg { color: var(--brick); }
+  .kpi-delta.flat { color: var(--ink-faint); }
+  .kpi-stale { font-size: 10.5px; color: var(--ink-faint); margin-top: 2px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 18px 8px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 15px;
+    margin: 0 0 12px;
+    color: var(--ink);
+  }
+  .chart-wrap { position: relative; height: 220px; }
+  .chart-empty {
+    height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-faint);
+    font-size: 13px;
+  }
+
+  .source-log {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  .source-log h2 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 15px;
+    margin: 0 0 4px;
+  }
+  .source-log .note { font-size: 12px; color: var(--ink-faint); margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink);
+  }
+  td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  td.faint { color: var(--ink-faint); }
+  tr:last-child td { border-bottom: none; }
+
+  footer {
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    margin-top: 28px;
+    letter-spacing: 0.02em;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="eyebrow">Atlanta Ventures — internal</div>
+    <h1>Portfolio Pulse</h1>
+    <div class="sub"><span class="dot"></span><span id="syncedLine"></span></div>
+  </header>
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <div class="flag-banner" id="flagBanner">
+    <span class="label">Flagged</span>
+    <span id="flagText"></span>
+  </div>
+
+  <section class="kpi-grid" id="kpiGrid"></section>
+
+  <div class="card">
+    <h2 id="chartTitle">Primary revenue, by reporting period</h2>
+    <div id="chartHost"></div>
+  </div>
+
+  <section class="source-log">
+    <h2>All reported metrics</h2>
+    <div class="note">Everything else this company has reported — no chart needed, just the numbers and how they moved.</div>
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Latest</th><th>Prior</th><th>Δ</th></tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </section>
+
+  <footer>Auto-extracted from real founder update emails. Infinite Giving's data before Jul 5 is synthetic test data.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+const HERO_PRIORITY = ["primary_revenue", "secondary_revenue", "volume", "profitability", "health_rate"];
+const HERO_LABELS = {
+  primary_revenue: "Primary Revenue", secondary_revenue: "Secondary Revenue",
+  volume: "Volume", profitability: "Profitability", health_rate: "Health"
+};
+const ACRONYMS = new Set(["gmv","arr","mrr","nps","cac","aov","vins","vin"]);
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function prettify(key) {
+  return key.split("_").map(tok => ACRONYMS.has(tok) ? tok.toUpperCase() : tok.charAt(0).toUpperCase() + tok.slice(1)).join(" ");
+}
+function periodLabel(p) {
+  const parts = p.split("-");
+  const y = parts[0];
+  if (parts.length === 3) { // "YYYY-MM-DD" — a specific day
+    const m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+    if (Number.isInteger(m) && Number.isInteger(d)) return MONTHS[m - 1] + " " + d + ", " + y;
+  }
+  const rest = parts[1];
+  if (!rest) return p; // "unknown" or anything unparseable — show it as-is, never "undefined"
+  if (rest.startsWith("Q")) return "Q" + rest.slice(1) + " " + y;
+  if (rest.startsWith("W")) return "Wk " + rest.slice(1) + ", " + y; // older rows, before dates were tracked
+  const m = parseInt(rest, 10);
+  if (Number.isInteger(m) && m >= 1 && m <= 12) return MONTHS[m - 1] + " " + y;
+  return p;
+}
+
+// Approximate each period to a real point in time so periods of different granularity
+// (a day, a month, a quarter, a week) sort correctly against each other — lexical string
+// sort only works when every row uses the same format, which real founders don't guarantee.
+function periodSortKey(p) {
+  const parts = p.split("-");
+  const y = parseInt(parts[0], 10);
+  if (Number.isNaN(y)) return -Infinity;
+  if (parts.length === 3) {
+    const m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+    if (Number.isInteger(m) && Number.isInteger(d)) return new Date(y, m - 1, d).getTime();
+  }
+  const rest = parts[1];
+  if (!rest) return -Infinity;
+  if (rest.startsWith("Q")) return new Date(y, (parseInt(rest.slice(1), 10) - 1) * 3, 1).getTime();
+  if (rest.startsWith("W")) return new Date(y, 0, 1 + (parseInt(rest.slice(1), 10) - 1) * 7).getTime();
+  const m = parseInt(rest, 10);
+  return Number.isInteger(m) ? new Date(y, m - 1, 1).getTime() : -Infinity;
+}
+function fmtValue(value, unit) {
+  if (unit === "USD") {
+    const abs = Math.abs(value);
+    if (abs >= 1000000) return "$" + (value / 1000000).toFixed(2).replace(/\.?0+$/, "") + "M";
+    if (abs >= 1000) return "$" + Math.round(value / 1000) + "K";
+    return "$" + value.toLocaleString();
+  }
+  if (unit === "percent") return value.toFixed(1) + "%";
+  if (unit === "days") return value.toFixed(1) + " days";
+  return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(1);
+}
+
+let data = null;
+let current = null;
+let chart = null;
+
+async function boot() {
+  data = await fetch("data.json", { cache: "no-store" }).then(r => r.json());
+  const [sy, sm, sd] = data.lastSynced.split("-").map(s => parseInt(s, 10));
+  document.getElementById("syncedLine").textContent =
+    "Auto-extracted from founder update emails · last synced " + MONTHS[sm - 1] + " " + sd + ", " + sy;
+  const companies = groupByCompany(data.rows);
+  current = Object.keys(companies)[0];
+  window.__companies = companies;
+  render();
+}
+
+function groupByCompany(rows) {
+  const byCompany = {};
+  for (const row of rows) {
+    if (!byCompany[row.company]) byCompany[row.company] = {};
+    if (!byCompany[row.company][row.metric]) byCompany[row.company][row.metric] = { unit: row.unit, series: {} };
+    byCompany[row.company][row.metric].series[row.period] = row.value;
+  }
+  return byCompany;
+}
+
+function latestGlobalPeriod(metrics) {
+  let latest = null;
+  for (const m of Object.values(metrics)) {
+    for (const p of Object.keys(m.series)) {
+      if (!latest || periodSortKey(p) > periodSortKey(latest)) latest = p;
+    }
+  }
+  return latest;
+}
+
+function seriesPoints(metric) {
+  return Object.keys(metric.series)
+    .sort((a, b) => periodSortKey(a) - periodSortKey(b))
+    .map(p => ({ period: p, value: metric.series[p] }));
+}
+
+function goodDirectionFor(key) {
+  return (data.goodDirection && data.goodDirection[key]) || "up";
+}
+
+function buildTile(key, metric, globalLatest) {
+  const points = seriesPoints(metric);
+  const latest = points[points.length - 1];
+  const prior = points.length > 1 ? points[points.length - 2] : null;
+  let deltaHtml = '<div class="kpi-delta flat">first reading</div>';
+  if (prior && prior.value !== 0) {
+    const deltaPct = ((latest.value - prior.value) / Math.abs(prior.value)) * 100;
+    const dir = goodDirectionFor(key);
+    const good = (deltaPct >= 0 && dir === "up") || (deltaPct <= 0 && dir === "down");
+    deltaHtml = `<div class="kpi-delta ${good ? 'pos' : 'neg'}">${deltaPct >= 0 ? '▲' : '▼'} ${Math.abs(deltaPct).toFixed(1)}%</div>`;
+  }
+  const staleHtml = latest.period !== globalLatest
+    ? `<div class="kpi-stale">as of ${periodLabel(latest.period)}</div>` : "";
+  return `<div class="kpi">
+    <div class="kpi-label">${prettify(key)}</div>
+    <div class="kpi-value">${fmtValue(latest.value, metric.unit)}</div>
+    ${deltaHtml}${staleHtml}
+  </div>`;
+}
+
+function render() {
+  const companies = window.__companies;
+  const names = Object.keys(companies);
+  document.getElementById("tabs").innerHTML = names.map(name =>
+    `<button class="tab ${name === current ? 'active' : ''}" data-name="${name}">${name}</button>`
+  ).join("");
+  document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => { current = btn.dataset.name; render(); });
+
+  const metrics = companies[current];
+  const catMap = (data.categories && data.categories[current]) || {};
+  const globalLatest = latestGlobalPeriod(metrics);
+
+  const heroKeys = [];
+  for (const cat of HERO_PRIORITY) {
+    const key = Object.keys(catMap).find(k => catMap[k] === cat && metrics[k]);
+    if (key) heroKeys.push(key);
+  }
+
+  document.getElementById("kpiGrid").innerHTML = heroKeys.length
+    ? heroKeys.map(k => buildTile(k, metrics[k], globalLatest)).join("")
+    : '<div class="chart-empty">No hero metrics tagged for this company yet.</div>';
+
+  const primaryKey = Object.keys(catMap).find(k => catMap[k] === "primary_revenue" && metrics[k]);
+  const chartHost = document.getElementById("chartHost");
+  document.getElementById("chartTitle").textContent = primaryKey
+    ? prettify(primaryKey) + ", by reporting period" : "Primary revenue, by reporting period";
+  const points = primaryKey ? seriesPoints(metrics[primaryKey]) : [];
+  if (chart) { chart.destroy(); chart = null; }
+  if (points.length < 2) {
+    chartHost.innerHTML = '<div class="chart-empty">Not enough periods yet to chart this trend.</div>';
+  } else {
+    chartHost.innerHTML = '<div class="chart-wrap"><canvas id="primaryChart"></canvas></div>';
+    chart = new Chart(document.getElementById("primaryChart"), {
+      type: "line",
+      data: {
+        labels: points.map(p => periodLabel(p.period)),
+        datasets: [{
+          data: points.map(p => p.value),
+          borderColor: "#2E6F63", backgroundColor: "rgba(46,111,99,0.08)",
+          borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#2E6F63", fill: true, tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtValue(ctx.raw, metrics[primaryKey].unit) } } },
+        scales: {
+          y: { ticks: { color: "#62705F", callback: v => fmtValue(v, metrics[primaryKey].unit), font: { size: 10 } }, grid: { color: "#DCE3D8" } },
+          x: { ticks: { color: "#62705F", font: { size: 11 } }, grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  const otherKeys = Object.keys(metrics).filter(k => !heroKeys.includes(k)).sort();
+  document.getElementById("logBody").innerHTML = otherKeys.map(k => {
+    const points = seriesPoints(metrics[k]);
+    const latest = points[points.length - 1];
+    const prior = points.length > 1 ? points[points.length - 2] : null;
+    const latestCell = `${fmtValue(latest.value, metrics[k].unit)}<br><span class="faint" style="font-size:10.5px">${periodLabel(latest.period)}</span>`;
+    const priorCell = prior ? `${fmtValue(prior.value, metrics[k].unit)}<br><span class="faint" style="font-size:10.5px">${periodLabel(prior.period)}</span>` : '<span class="faint">—</span>';
+    let deltaCell = '<span class="faint">—</span>';
+    if (prior && prior.value !== 0) {
+      const deltaPct = ((latest.value - prior.value) / Math.abs(prior.value)) * 100;
+      deltaCell = `${deltaPct >= 0 ? '▲' : '▼'} ${Math.abs(deltaPct).toFixed(1)}%`;
+    }
+    return `<tr>
+      <td>${prettify(k)}</td>
+      <td class="num">${latestCell}</td>
+      <td class="num">${priorCell}</td>
+      <td class="num">${deltaCell}</td>
+    </tr>`;
+  }).join("");
+}
+
+boot();
+</script>
+</body>
+</html>
