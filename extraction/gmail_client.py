@@ -17,9 +17,22 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
+# gmail.readonly ONLY — per Google's own Gmail API scope docs, this explicitly excludes
+# send/modify/delete. Whoever completes the OAuth consent screen (you, or later your boss) is
+# only ever granting read access, never the ability to send or alter anything in their inbox.
+# Do not widen this without deliberately deciding to grant write access.
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-TOKEN_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "token.json")
-CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "credentials.json")
+
+# Configurable so a second Google account (e.g. your boss's, once he does the one-time login)
+# can be tested with its own token/credentials files without overwriting the ones already
+# working for the current account — set GMAIL_TOKEN_PATH / GMAIL_CREDENTIALS_PATH to point at
+# a different pair of files, run once to complete that account's login, done.
+TOKEN_PATH = os.environ.get(
+    "GMAIL_TOKEN_PATH", os.path.join(os.path.dirname(__file__), "..", "config", "token.json")
+)
+CREDENTIALS_PATH = os.environ.get(
+    "GMAIL_CREDENTIALS_PATH", os.path.join(os.path.dirname(__file__), "..", "config", "credentials.json")
+)
 
 # Dropped before matching a company name against a subject line — founders write the brand
 # name, rarely the full formal name (e.g. "Carpool", not "Carpool Logistics").

@@ -8,7 +8,9 @@ needs your Google account and your Anthropic API key.
 
 ```
 ├── config/
-│   ├── prompts.py          # the two prompt templates, already written
+│   ├── prompts.py          # the three prompt templates, already written
+│   ├── models.py           # the one place model names live — see its docstring before touching
+│   ├── json_utils.py       # shared, defensive parsing of Claude's JSON responses
 │   ├── credentials.json    # Gmail OAuth client — you download this (step 2)
 │   ├── service_account.json # Sheets service account key — you download this (step 3)
 │   └── (token.json, last_run.json get created automatically on first run)
@@ -45,6 +47,25 @@ Open `.env` and add your real Anthropic API key (same one from your Console org)
 5. First time you run anything that touches Gmail, a browser tab opens asking you to approve
    access — that's expected, and only happens once. It saves a `token.json` so every run
    after that is silent.
+
+This tool only ever requests the `gmail.readonly` scope — Google's own docs are explicit that
+this excludes send/modify/delete. Whoever clicks through that consent screen (you today, your
+boss eventually) is granting read access only; there is no code path in here that could send or
+alter anything in their inbox.
+
+**Testing a second Google account (e.g. your boss's) without breaking the first:** don't just
+rerun the login — it overwrites `token.json` in place and breaks whichever account was working
+before. Since the OAuth consent screen is set to "Internal," the same `credentials.json` already
+covers anyone in the AV Google Workspace — you don't need a second OAuth client, just a separate
+token file so each person's login is saved independently:
+
+```bash
+GMAIL_TOKEN_PATH=config/token_boss.json python3 gmail_client.py some-address@example.com
+```
+
+Whoever is at the keyboard when that runs is the account that logs in and gets saved to
+`token_boss.json` — your own `token.json` is untouched. Once it's verified working, decide
+deliberately whether to point the real pipeline at the new token or keep both around.
 
 ## 3. Sheets API access (for reading Registry, writing Metrics)
 
@@ -108,12 +129,21 @@ python3 -m http.server 8765
 ```
 
 Open `http://localhost:8765` — it reads `data.json`, which `run_pipeline.py` keeps fresh. Each
-company gets up to 5 cards (its most important metrics); clicking one opens that metric's
-monthly trend, filterable by year. There's deliberately no "everything else" table — this
-tool tracks a small, chosen set of numbers, not everything a founder's email happens to state.
+company gets up to 5 cards (its most important metrics), with a chart always visible below them
+— no click needed to see a trend. Clicking a different card swaps which metric the chart shows;
+a toggle switches the chart between month-by-month (with a year picker) and year-over-year
+views. There's deliberately no "everything else" table — this tool tracks a small, chosen set
+of numbers, not everything a founder's email happens to state.
 
 ## 7. Later: scheduling
 
 Once this works end to end manually, `run_pipeline.py <spreadsheet_id>` is the one command a
 cron job needs to call on a schedule — same shape as the job board droplet cron, just this
 script instead.
+
+## 8. Possible future work
+
+`GMAIL_LOOKUP_SKILL_SPEC.md` in the repo root is a design spec (not built) for a smaller,
+on-demand companion tool — answering ad hoc questions like "show me updates from Carpool for
+the last 4 months" directly in chat, without the scheduling or persistent-Sheet parts of this
+pipeline. Not started; read that file before building it.

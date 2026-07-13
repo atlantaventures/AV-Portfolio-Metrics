@@ -1,13 +1,16 @@
 """
 Prompt templates for the portfolio tracker.
 
-Two prompts, two jobs:
+Three prompts, three jobs:
 - ONBOARDING_PROMPT: run once per company, on one sample email plus the human's stated
   priorities — mandatory, the universal source of truth for what gets tracked. Proposes a
   small, fixed set of metrics — at most one per category, five categories total. This is the
   one place scope gets decided; extraction never discovers anything beyond it.
 - EXTRACTION_PROMPT: run on every real update email, pulling values for exactly the metrics
   chosen at onboarding. Anything else the email mentions is ignored, not captured "just in case."
+- RELEVANCE_PROMPT: run on every incoming email (after a free keyword fast-path) to decide
+  whether it's a performance update worth extracting from at all, before either of the above
+  ever runs.
 """
 
 CATEGORY_GUIDE = """There are exactly five categories, one metric each, at most five metrics total for a company:
@@ -40,8 +43,15 @@ Hard rules:
 - Do not skip an explicitly named item just because it's awkward to categorize — every one of the five
   categories can hold anything; pick whichever fits best rather than dropping it.
 - {category_guide}
-- If an item named above has no number stated anywhere in this email, leave it out of the schema entirely
-  rather than inventing a value for it.
+- Map by meaning, not literal wording — but only within the SAME underlying business concept. "Take-home
+  earnings" can map to a stated "net revenue" figure because they're the same concept differently phrased.
+  A named item is a genuinely different concept from anything the email reports (e.g. "annual recurring
+  revenue" for a company that only reports one-time freight/transaction revenue, with no recurring-revenue
+  concept anywhere in the email) is NOT a wording variant of the closest available number — it is absent.
+- If an item named above has no number for its actual concept stated anywhere in this email, leave it out
+  of the schema entirely. Never substitute a different, unrelated number just because it's the closest
+  available figure — inventing a value (or mislabeling an unrelated metric to fill the name) is worse than
+  omitting the item.
 - If more than five items are named above, keep only the first five and ignore the rest.
 - Only metrics about this company's OWN performance — not general market/industry data, benchmarks, or
   competitor figures the founder cites for context. If in doubt whether a number is about this company vs.
