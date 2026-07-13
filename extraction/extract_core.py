@@ -15,6 +15,7 @@ load_dotenv()
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 from prompts import EXTRACTION_PROMPT  # noqa: E402
 from json_utils import parse_json_response  # noqa: E402
+from models import EXTRACTION_MODEL  # noqa: E402
 
 client = Anthropic()
 
@@ -25,7 +26,7 @@ def extract_metrics(email_text: str, schema: dict, email_date: str = "unknown") 
         {
           "period": "2026-03",
           "metrics": [
-            {"metric": "revenue", "value": 82000, "unit": "USD", "is_new_metric": false},
+            {"metric": "revenue", "value": 82000, "unit": "USD"},
             ...
           ]
         }
@@ -36,7 +37,7 @@ def extract_metrics(email_text: str, schema: dict, email_date: str = "unknown") 
         email_text=email_text,
     )
     response = client.messages.create(
-        model="claude-sonnet-5",
+        model=EXTRACTION_MODEL,
         max_tokens=2048,
         thinking={"type": "disabled"},
         messages=[{"role": "user", "content": prompt}],

@@ -16,12 +16,6 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 REGISTRY_TAB = "Registry"
 METRICS_TAB = "Metrics"
-REVIEW_TAB = "Pending Review"
-REVIEW_HEADER = [
-    "company", "period", "metric", "value", "unit",
-    "is_duplicate", "matches_metric", "confidence", "reasoning",
-    "proposed_category", "proposed_good_direction", "proposed_label", "status",
-]
 
 
 def _get_client():
@@ -31,34 +25,68 @@ def _get_client():
 
 def get_active_companies(spreadsheet_id: str) -> list[dict]:
     """
-    Reads the Registry tab. Returns rows where status == "Active", each as:
-        {"company": ..., "sender_email": ..., "schema": {...}}
+    Reads the Registry tab. Returns rows where status == "Active" AND priorities is filled in
+    (priorities is the universal source of truth — a company with no stated priorities has no
+    data displayed, even if it happens to already have a schema from before this was enforced).
+    Each as: {"company": ..., "sender_email": ..., "schema": {...}}
     """
     sheet = _get_client().open_by_key(spreadsheet_id).worksheet(REGISTRY_TAB)
     rows = sheet.get_all_records()  # list of dicts, keyed by header row
 
     active = []
     for row in rows:
-        if str(row.get("status", "")).strip().lower() == "active" and str(row.get("schema_json", "")).strip():
+        if (
+            str(row.get("status", "")).strip().lower() == "active"
+            and str(row.get("schema_json", "")).strip()
+            and str(row.get("priorities", "")).strip()
+        ):
+            # A hand-edit gone wrong (a typo, Sheets auto-converting straight quotes to "smart"
+            # quotes) shouldn't take down every other company's sync — skip just this one row.
+            try:
+                schema = json.loads(row["schema_json"])
+            except json.JSONDecodeError as e:
+                print(f"  WARNING: {row['company']}'s schema_json is malformed JSON ({e}) — skipping this company.")
+                continue
             active.append({
                 "company": row["company"],
                 "sender_email": row["sender_email"],
-                "schema": json.loads(row["schema_json"]),
+                "schema": schema,
             })
     return active
 
 
 def get_companies_needing_onboarding(spreadsheet_id: str) -> list[dict]:
     """
-    Reads the Registry tab. Returns Active rows whose schema_json is still blank — these are
-    companies waiting on their first (automatic) schema proposal before extraction can run.
+    Reads the Registry tab. Returns Active rows with priorities set but schema_json still
+    blank — these are ready for their first (automatic) schema proposal. Active rows with
+    priorities still blank are NOT included here (see get_companies_waiting_on_priorities) —
+    priorities is mandatory, so onboarding never runs without it.
     """
     sheet = _get_client().open_by_key(spreadsheet_id).worksheet(REGISTRY_TAB)
     rows = sheet.get_all_records()
     return [
-        {"company": row["company"], "sender_email": row["sender_email"]}
+        {
+            "company": row["company"],
+            "sender_email": row["sender_email"],
+            "priorities": row["priorities"],
+        }
         for row in rows
-        if str(row.get("status", "")).strip().lower() == "active" and not str(row.get("schema_json", "")).strip()
+        if str(row.get("status", "")).strip().lower() == "active"
+        and not str(row.get("schema_json", "")).strip()
+        and str(row.get("priorities", "")).strip()
+    ]
+
+
+def get_companies_waiting_on_priorities(spreadsheet_id: str) -> list[str]:
+    """Active companies with no schema yet AND no priorities set — stuck until a human fills it in."""
+    sheet = _get_client().open_by_key(spreadsheet_id).worksheet(REGISTRY_TAB)
+    rows = sheet.get_all_records()
+    return [
+        row["company"]
+        for row in rows
+        if str(row.get("status", "")).strip().lower() == "active"
+        and not str(row.get("schema_json", "")).strip()
+        and not str(row.get("priorities", "")).strip()
     ]
 
 
@@ -76,41 +104,6 @@ def get_all_metric_rows(spreadsheet_id: str) -> list[dict]:
     return sheet.get_all_records()
 
 
-def append_review_rows(spreadsheet_id: str, rows: list[list]) -> None:
-    """
-    rows match REVIEW_HEADER's column order. Creates the "Pending Review" tab with a header
-    row if it doesn't exist yet — this is the surface a human reviews before anything gets merged.
-    """
-    if not rows:
-        return
-    spreadsheet = _get_client().open_by_key(spreadsheet_id)
-    try:
-        sheet = spreadsheet.worksheet(REVIEW_TAB)
-    except gspread.WorksheetNotFound:
-        sheet = spreadsheet.add_worksheet(title=REVIEW_TAB, rows=1, cols=len(REVIEW_HEADER))
-        sheet.append_row(REVIEW_HEADER)
-    sheet.append_rows(rows, value_input_option="USER_ENTERED")
-
-
-def get_reviews_by_status(spreadsheet_id: str, status: str) -> list[dict]:
-    """Reads the Pending Review tab, returning rows (as dicts keyed by REVIEW_HEADER) matching status."""
-    sheet = _get_client().open_by_key(spreadsheet_id).worksheet(REVIEW_TAB)
-    all_rows = sheet.get_all_records()
-    matches = []
-    for i, row in enumerate(all_rows):
-        if row.get("status") == status:
-            row["_row_number"] = i + 2  # +1 for header, +1 for 1-indexing
-            matches.append(row)
-    return matches
-
-
-def set_review_status(spreadsheet_id: str, row_number: int, status: str) -> None:
-    """row_number is the 1-indexed sheet row, e.g. from get_reviews_by_status's "_row_number"."""
-    sheet = _get_client().open_by_key(spreadsheet_id).worksheet(REVIEW_TAB)
-    status_col = REVIEW_HEADER.index("status") + 1
-    sheet.update_cell(row_number, status_col, status)
-
-
 def update_company_schema(spreadsheet_id: str, company: str, schema: dict) -> None:
     """Overwrites a company's schema_json cell in the Registry tab."""
     sheet = _get_client().open_by_key(spreadsheet_id).worksheet(REGISTRY_TAB)
@@ -124,24 +117,6 @@ def update_company_schema(spreadsheet_id: str, company: str, schema: dict) -> No
     raise ValueError(f"No Registry row found for company '{company}'")
 
 
-def relabel_metric_rows(spreadsheet_id: str, company: str, old_metric: str, new_metric: str) -> int:
-    """
-    Rewrites every Metrics-tab row for this company under old_metric to new_metric — used when a
-    human approves a merge, so the metric's full history lands under one name instead of splitting.
-    Returns the number of rows relabeled.
-    """
-    sheet = _get_client().open_by_key(spreadsheet_id).worksheet(METRICS_TAB)
-    all_rows = sheet.get_all_records()
-    header = sheet.row_values(1)
-    metric_col = header.index("metric") + 1
-    relabeled = 0
-    for i, row in enumerate(all_rows):
-        if row.get("company") == company and row.get("metric") == old_metric:
-            sheet.update_cell(i + 2, metric_col, new_metric)
-            relabeled += 1
-    return relabeled
-
-
 if __name__ == "__main__":
     # Quick manual test: python sheets_client.py <spreadsheet_id>
     import sys
@@ -151,4 +126,4 @@ if __name__ == "__main__":
     companies = get_active_companies(sys.argv[1])
     print(f"Found {len(companies)} active company(ies):")
     for c in companies:
-        print(f"  - {c['company']} ({c['sender_email']}) — {list(c['schema'].get('metrics', {}).keys())}")
+        print(f"  - {c['company']} ({c['sender_email']}) — {list(c['schema'].keys())}")

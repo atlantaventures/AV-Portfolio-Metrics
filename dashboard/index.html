@@ -115,6 +115,8 @@
     border-radius: 10px;
     padding: 16px;
   }
+  .kpi.clickable { cursor: pointer; transition: border-color 0.15s; }
+  .kpi.clickable:hover { border-color: var(--teal); }
   .kpi-label {
     font-size: 10.5px;
     letter-spacing: 0.08em;
@@ -161,39 +163,18 @@
     font-size: 13px;
   }
 
-  .source-log {
+  .detail-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .kpi.selected { border-color: var(--teal); }
+  .year-select {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-soft);
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 18px;
+    border-radius: 6px;
+    padding: 5px 8px;
+    cursor: pointer;
   }
-  .source-log h2 {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-weight: 500;
-    font-size: 15px;
-    margin: 0 0 4px;
-  }
-  .source-log .note { font-size: 12px; color: var(--ink-faint); margin-bottom: 14px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th {
-    text-align: left;
-    font-size: 10.5px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-    font-weight: 600;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--line);
-  }
-  td {
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--line);
-    color: var(--ink);
-  }
-  td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-  td.faint { color: var(--ink-faint); }
-  tr:last-child td { border-bottom: none; }
 
   footer {
     text-align: center;
@@ -221,21 +202,19 @@
 
   <section class="kpi-grid" id="kpiGrid"></section>
 
-  <div class="card">
-    <h2 id="chartTitle">Primary revenue, by reporting period</h2>
+  <div class="card" id="detailCard">
+    <div class="detail-header">
+      <h2 id="chartTitle" style="margin:0;"></h2>
+      <div style="display:flex; gap:8px;">
+        <select class="year-select" id="modeSelect">
+          <option value="month">By month</option>
+          <option value="year">By year</option>
+        </select>
+        <select class="year-select" id="yearSelect"></select>
+      </div>
+    </div>
     <div id="chartHost"></div>
   </div>
-
-  <section class="source-log">
-    <h2>All reported metrics</h2>
-    <div class="note">Everything else this company has reported — no chart needed, just the numbers and how they moved.</div>
-    <table>
-      <thead>
-        <tr><th>Metric</th><th>Latest</th><th>Prior</th><th>Δ</th></tr>
-      </thead>
-      <tbody id="logBody"></tbody>
-    </table>
-  </section>
 
   <footer>Auto-extracted from real founder update emails. Infinite Giving's data before Jul 5 is synthetic test data.</footer>
 </div>
@@ -243,10 +222,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>
 const HERO_PRIORITY = ["primary_revenue", "secondary_revenue", "volume", "profitability", "health_rate"];
-const HERO_LABELS = {
-  primary_revenue: "Primary Revenue", secondary_revenue: "Secondary Revenue",
-  volume: "Volume", profitability: "Profitability", health_rate: "Health"
-};
 const ACRONYMS = new Set(["gmv","arr","mrr","nps","cac","aov","vins","vin"]);
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -256,21 +231,21 @@ function prettify(key) {
 function periodLabel(p) {
   const parts = p.split("-");
   const y = parts[0];
-  if (parts.length === 3) { // "YYYY-MM-DD" — a specific day
+  if (parts.length === 3) { // "YYYY-MM-DD" — a specific day (legacy rows from before month-only tracking)
     const m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
     if (Number.isInteger(m) && Number.isInteger(d)) return MONTHS[m - 1] + " " + d + ", " + y;
   }
   const rest = parts[1];
   if (!rest) return p; // "unknown" or anything unparseable — show it as-is, never "undefined"
   if (rest.startsWith("Q")) return "Q" + rest.slice(1) + " " + y;
-  if (rest.startsWith("W")) return "Wk " + rest.slice(1) + ", " + y; // older rows, before dates were tracked
+  if (rest.startsWith("W")) return "Wk " + rest.slice(1) + ", " + y; // legacy rows, before weekly was rolled into monthly
   const m = parseInt(rest, 10);
   if (Number.isInteger(m) && m >= 1 && m <= 12) return MONTHS[m - 1] + " " + y;
   return p;
 }
 
 // Approximate each period to a real point in time so periods of different granularity
-// (a day, a month, a quarter, a week) sort correctly against each other — lexical string
+// (a month, a quarter, legacy days/weeks) sort correctly against each other — lexical string
 // sort only works when every row uses the same format, which real founders don't guarantee.
 function periodSortKey(p) {
   const parts = p.split("-");
@@ -287,6 +262,10 @@ function periodSortKey(p) {
   const m = parseInt(rest, 10);
   return Number.isInteger(m) ? new Date(y, m - 1, 1).getTime() : -Infinity;
 }
+function periodYear(p) {
+  const y = parseInt(p.split("-")[0], 10);
+  return Number.isInteger(y) ? y : null;
+}
 function fmtValue(value, unit) {
   if (unit === "USD") {
     const abs = Math.abs(value);
@@ -302,6 +281,9 @@ function fmtValue(value, unit) {
 let data = null;
 let current = null;
 let chart = null;
+let selectedKey = null;
+let selectedYear = null;
+let selectedMode = "month"; // "month" (one year's months) or "year" (one point per year)
 
 async function boot() {
   data = await fetch("data.json", { cache: "no-store" }).then(r => r.json());
@@ -357,11 +339,19 @@ function buildTile(key, metric, globalLatest) {
   }
   const staleHtml = latest.period !== globalLatest
     ? `<div class="kpi-stale">as of ${periodLabel(latest.period)}</div>` : "";
-  return `<div class="kpi">
+  return `<div class="kpi clickable${key === selectedKey ? ' selected' : ''}" data-key="${key}">
     <div class="kpi-label">${prettify(key)}</div>
     <div class="kpi-value">${fmtValue(latest.value, metric.unit)}</div>
     ${deltaHtml}${staleHtml}
   </div>`;
+}
+
+function selectMetric(key) {
+  selectedKey = key;
+  const points = seriesPoints(window.__companies[current][key]);
+  const years = [...new Set(points.map(p => periodYear(p.period)).filter(y => y !== null))].sort((a, b) => a - b);
+  selectedYear = years.length ? years[years.length - 1] : null;
+  render();
 }
 
 function render() {
@@ -370,7 +360,11 @@ function render() {
   document.getElementById("tabs").innerHTML = names.map(name =>
     `<button class="tab ${name === current ? 'active' : ''}" data-name="${name}">${name}</button>`
   ).join("");
-  document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => { current = btn.dataset.name; render(); });
+  document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => {
+    current = btn.dataset.name;
+    selectedKey = null; // recompute the default (primary revenue) for the newly selected company
+    render();
+  });
 
   const metrics = companies[current];
   const catMap = (data.categories && data.categories[current]) || {};
@@ -382,60 +376,89 @@ function render() {
     if (key) heroKeys.push(key);
   }
 
-  document.getElementById("kpiGrid").innerHTML = heroKeys.length
-    ? heroKeys.map(k => buildTile(k, metrics[k], globalLatest)).join("")
-    : '<div class="chart-empty">No hero metrics tagged for this company yet.</div>';
-
-  const primaryKey = Object.keys(catMap).find(k => catMap[k] === "primary_revenue" && metrics[k]);
-  const chartHost = document.getElementById("chartHost");
-  document.getElementById("chartTitle").textContent = primaryKey
-    ? prettify(primaryKey) + ", by reporting period" : "Primary revenue, by reporting period";
-  const points = primaryKey ? seriesPoints(metrics[primaryKey]) : [];
-  if (chart) { chart.destroy(); chart = null; }
-  if (points.length < 2) {
-    chartHost.innerHTML = '<div class="chart-empty">Not enough periods yet to chart this trend.</div>';
-  } else {
-    chartHost.innerHTML = '<div class="chart-wrap"><canvas id="primaryChart"></canvas></div>';
-    chart = new Chart(document.getElementById("primaryChart"), {
-      type: "line",
-      data: {
-        labels: points.map(p => periodLabel(p.period)),
-        datasets: [{
-          data: points.map(p => p.value),
-          borderColor: "#2E6F63", backgroundColor: "rgba(46,111,99,0.08)",
-          borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#2E6F63", fill: true, tension: 0.3
-        }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtValue(ctx.raw, metrics[primaryKey].unit) } } },
-        scales: {
-          y: { ticks: { color: "#62705F", callback: v => fmtValue(v, metrics[primaryKey].unit), font: { size: 10 } }, grid: { color: "#DCE3D8" } },
-          x: { ticks: { color: "#62705F", font: { size: 11 } }, grid: { display: false } }
-        }
-      }
-    });
+  if (!selectedKey || !heroKeys.includes(selectedKey)) {
+    selectedKey = heroKeys[0] || null; // default to primary revenue — first in HERO_PRIORITY order
+    const points = selectedKey ? seriesPoints(metrics[selectedKey]) : [];
+    const years = [...new Set(points.map(p => periodYear(p.period)).filter(y => y !== null))].sort((a, b) => a - b);
+    selectedYear = years.length ? years[years.length - 1] : null;
   }
 
-  const otherKeys = Object.keys(metrics).filter(k => !heroKeys.includes(k)).sort();
-  document.getElementById("logBody").innerHTML = otherKeys.map(k => {
-    const points = seriesPoints(metrics[k]);
-    const latest = points[points.length - 1];
-    const prior = points.length > 1 ? points[points.length - 2] : null;
-    const latestCell = `${fmtValue(latest.value, metrics[k].unit)}<br><span class="faint" style="font-size:10.5px">${periodLabel(latest.period)}</span>`;
-    const priorCell = prior ? `${fmtValue(prior.value, metrics[k].unit)}<br><span class="faint" style="font-size:10.5px">${periodLabel(prior.period)}</span>` : '<span class="faint">—</span>';
-    let deltaCell = '<span class="faint">—</span>';
-    if (prior && prior.value !== 0) {
-      const deltaPct = ((latest.value - prior.value) / Math.abs(prior.value)) * 100;
-      deltaCell = `${deltaPct >= 0 ? '▲' : '▼'} ${Math.abs(deltaPct).toFixed(1)}%`;
+  document.getElementById("kpiGrid").innerHTML = heroKeys.length
+    ? heroKeys.map(k => buildTile(k, metrics[k], globalLatest)).join("")
+    : '<div class="chart-empty">No metrics tracked for this company yet.</div>';
+  document.querySelectorAll(".kpi.clickable").forEach(el => el.onclick = () => selectMetric(el.dataset.key));
+
+  const detailCard = document.getElementById("detailCard");
+  if (selectedKey) {
+    detailCard.style.display = "";
+    renderDetail();
+  } else {
+    detailCard.style.display = "none";
+    if (chart) { chart.destroy(); chart = null; }
+  }
+}
+
+function renderDetail() {
+  const metric = window.__companies[current][selectedKey];
+  const allPoints = seriesPoints(metric);
+  const years = [...new Set(allPoints.map(p => periodYear(p.period)).filter(y => y !== null))].sort((a, b) => a - b);
+  if (!years.includes(selectedYear)) selectedYear = years.length ? years[years.length - 1] : null;
+
+  const modeSelect = document.getElementById("modeSelect");
+  modeSelect.value = selectedMode;
+  modeSelect.onchange = () => { selectedMode = modeSelect.value; renderDetail(); };
+
+  const yearSelect = document.getElementById("yearSelect");
+  yearSelect.style.display = selectedMode === "year" ? "none" : "";
+  yearSelect.innerHTML = years.map(y => `<option value="${y}" ${y === selectedYear ? "selected" : ""}>${y}</option>`).join("");
+  yearSelect.onchange = () => { selectedYear = parseInt(yearSelect.value, 10); renderDetail(); };
+
+  // The title reflects whichever mode is actually active — never a fixed string, since the
+  // chart's meaning changes depending on whether you're looking at one year's months or every year.
+  document.getElementById("chartTitle").textContent =
+    prettify(selectedKey) + (selectedMode === "year" ? ", by year" : ", by month");
+
+  let points, labels, emptyMsg;
+  if (selectedMode === "year") {
+    // One point per year — the latest reading recorded within that year.
+    points = years.map(y => {
+      const inYear = allPoints.filter(p => periodYear(p.period) === y);
+      return inYear[inYear.length - 1];
+    });
+    labels = years.map(String);
+    emptyMsg = "Not enough years of data yet to chart a trend.";
+  } else {
+    points = allPoints.filter(p => periodYear(p.period) === selectedYear);
+    labels = points.map(p => periodLabel(p.period));
+    emptyMsg = `Not enough readings in ${selectedYear} to chart a trend.`;
+  }
+
+  const chartHost = document.getElementById("chartHost");
+  if (chart) { chart.destroy(); chart = null; }
+  if (points.length < 2) {
+    chartHost.innerHTML = `<div class="chart-empty">${emptyMsg}</div>`;
+    return;
+  }
+  chartHost.innerHTML = '<div class="chart-wrap"><canvas id="detailChart"></canvas></div>';
+  chart = new Chart(document.getElementById("detailChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        data: points.map(p => p.value),
+        borderColor: "#2E6F63", backgroundColor: "rgba(46,111,99,0.08)",
+        borderWidth: 2, pointRadius: 4, pointBackgroundColor: "#2E6F63", fill: true, tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtValue(ctx.raw, metric.unit) } } },
+      scales: {
+        y: { ticks: { color: "#62705F", callback: v => fmtValue(v, metric.unit), font: { size: 10 } }, grid: { color: "#DCE3D8" } },
+        x: { ticks: { color: "#62705F", font: { size: 11 } }, grid: { display: false } }
+      }
     }
-    return `<tr>
-      <td>${prettify(k)}</td>
-      <td class="num">${latestCell}</td>
-      <td class="num">${priorCell}</td>
-      <td class="num">${deltaCell}</td>
-    </tr>`;
-  }).join("");
+  });
 }
 
 boot();

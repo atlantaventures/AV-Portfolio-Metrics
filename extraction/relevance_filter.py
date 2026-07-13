@@ -15,6 +15,7 @@ from anthropic import Anthropic
 load_dotenv()
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
 from prompts import RELEVANCE_PROMPT  # noqa: E402
+from models import RELEVANCE_MODEL  # noqa: E402
 
 client = Anthropic()
 
@@ -35,7 +36,7 @@ def is_relevant_update(subject: str, body: str) -> bool:
     """True if this looks like a business performance update worth extracting from. Always calls Claude."""
     prompt = RELEVANCE_PROMPT.format(subject=subject, body_excerpt=body[:BODY_EXCERPT_CHARS])
     response = client.messages.create(
-        model="claude-sonnet-5",
+        model=RELEVANCE_MODEL,
         max_tokens=10,
         thinking={"type": "disabled"},
         messages=[{"role": "user", "content": prompt}],

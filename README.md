@@ -65,8 +65,16 @@ Make a new Sheet with two tabs, headers exactly as shown (case-sensitive — the
 these by name):
 
 **Registry tab:**
-| company | sender_email | status | schema_json |
-|---|---|---|---|
+| company | sender_email | status | schema_json | priorities |
+|---|---|---|---|---|
+
+`priorities` is **mandatory**, free text — whatever you want tracked for this company, in plain
+language (e.g. "ARR, active customers, and churn — ignore everything else"). It's the universal
+source of truth for what this tool ever tracks: a company with no priorities set is never
+onboarded, and has no data displayed on the dashboard even if it already has a schema and
+history from before this rule existed. It's read once at onboarding to choose the metrics
+(never re-sent on every sync), but its presence is checked every time the dashboard data gets
+rebuilt — blank it out later and that company's data stops showing until it's filled in again.
 
 **Metrics tab:**
 | company | period | metric | value | unit |
@@ -76,33 +84,33 @@ Share the Sheet with your service account's email address (from step 3.4) as an 
 Grab the spreadsheet ID from the URL — the long string between `/d/` and `/edit` — and put
 it in `.env` as `SPREADSHEET_ID`.
 
-## 5. Test each piece on its own
+## 5. Add a company and run it
+
+Add a row to the Registry tab by hand: company name, sender email, `status = Active`, and
+`priorities` — required, the pipeline refuses to onboard a company without it. Leave
+`schema_json` blank — the pipeline notices and onboards it automatically on the next run,
+pulling a real sample straight from Gmail (no sample file needed). Then just run the real thing:
 
 ```bash
-# Onboarding — proposes a schema from a sample email
-cd onboarding
-python3 onboard_company.py path/to/a/real/sample_email.txt
-
-# Gmail connection — lists recent emails from a sender (triggers the one-time browser auth)
-cd ../extraction
-python3 gmail_client.py founder@example.com
-
-# Sheets connection — lists active companies from your Registry tab
-python3 sheets_client.py <your-spreadsheet-id>
-```
-
-If all three work, add your first company to the Registry tab by hand (status = "Active",
-schema_json = whatever the onboarding script printed) and run the real thing:
-
-```bash
+cd extraction
 python3 run_pipeline.py <your-spreadsheet-id>
 ```
 
-## 6. Connect Data Studio
+This does everything: onboards any company missing a schema (at most 5 metrics, chosen by
+Claude from the sample email plus your stated priorities), syncs new emails, extracts values
+for exactly those metrics, and refreshes `dashboard/data.json`.
 
-Point Data Studio at the same Sheet, using the Metrics tab as the data source. Build the
-company + metric filter controls as discussed — nothing in this repo touches that part, it's
-pure point-and-click once the Metrics tab has real rows in it.
+## 6. View the dashboard
+
+```bash
+cd dashboard
+python3 -m http.server 8765
+```
+
+Open `http://localhost:8765` — it reads `data.json`, which `run_pipeline.py` keeps fresh. Each
+company gets up to 5 cards (its most important metrics); clicking one opens that metric's
+monthly trend, filterable by year. There's deliberately no "everything else" table — this
+tool tracks a small, chosen set of numbers, not everything a founder's email happens to state.
 
 ## 7. Later: scheduling
 

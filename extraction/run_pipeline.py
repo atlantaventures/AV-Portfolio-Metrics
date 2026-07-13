@@ -3,7 +3,7 @@ The recurring pipeline — this is Phase 2 from the workflow map, run as one scr
 
 For each active company in the Registry:
     1. Fetch new emails since the last run.
-    2. Extract metrics from each, using that company's schema.
+    2. Extract metrics from each, using that company's fixed schema (chosen once at onboarding).
     3. Append the resulting rows to the Metrics tab.
 
 Run manually while testing:
@@ -22,13 +22,11 @@ from gmail_client import fetch_new_emails
 from sheets_client import (
     get_active_companies,
     append_metric_rows,
-    append_review_rows,
-    REVIEW_TAB,
     get_companies_needing_onboarding,
+    get_companies_waiting_on_priorities,
     update_company_schema,
 )
 from extract_core import extract_metrics, rows_for_sheet
-from triage_new_metrics import triage_metric, review_row_for_sheet
 from relevance_filter import should_extract
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "dashboard"))
@@ -57,12 +55,18 @@ def run(spreadsheet_id: str) -> None:
     since = _get_last_run()
     run_started_at = datetime.now()
 
+    waiting_on_priorities = get_companies_waiting_on_priorities(spreadsheet_id)
+    for company in waiting_on_priorities:
+        print(f"  {company}: waiting on 'priorities' to be set in the Registry — no data until then.")
+
     pending_onboarding = get_companies_needing_onboarding(spreadsheet_id)
     freshly_onboarded = set()
     for company in pending_onboarding:
         print(f"  {company['company']}: no schema yet — pulling their most recent email to propose one...")
         try:
-            schema = propose_schema_from_sender(company["sender_email"], subject_hint=company["company"])
+            schema = propose_schema_from_sender(
+                company["sender_email"], subject_hint=company["company"], user_priorities=company.get("priorities", "")
+            )
         except ValueError as e:
             print(f"    Skipped: {e}")
             continue
@@ -74,7 +78,6 @@ def run(spreadsheet_id: str) -> None:
     print(f"Checking {len(companies)} active company(ies) for updates since {since}...")
 
     total_rows_written = 0
-    review_rows = []
     for company in companies:
         # A company onboarded just now has never been synced — give it its own fresh
         # lookback rather than the shared `since`, or its real backfill silently gets skipped.
@@ -97,18 +100,7 @@ def run(spreadsheet_id: str) -> None:
             rows = rows_for_sheet(company["company"], result)
             append_metric_rows(spreadsheet_id, rows)
             total_rows_written += len(rows)
-
-            new_metrics = [m for m in result.get("metrics", []) if m.get("is_new_metric")]
-            for m in new_metrics:
-                proposal = triage_metric(company["schema"], m)
-                review_rows.append(review_row_for_sheet(company["company"], result.get("period", "unknown"), m, proposal))
-
-            note = f" (new metric(s) seen: {[m['metric'] for m in new_metrics]})" if new_metrics else ""
-            print(f"  {company['company']}: extracted {len(rows)} metric(s) from '{email['subject']}'{note}")
-
-    if review_rows:
-        append_review_rows(spreadsheet_id, review_rows)
-        print(f"{len(review_rows)} new metric(s) sent to the '{REVIEW_TAB}' tab for review.")
+            print(f"  {company['company']}: extracted {len(rows)} metric(s) from '{email['subject']}'")
 
     dashboard_data = build_dashboard_data(spreadsheet_id)
     with open(DASHBOARD_DATA_PATH, "w") as f:
