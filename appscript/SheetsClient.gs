@@ -140,12 +140,12 @@ function findRegistryRowByName_(companyName) {
 }
 
 /**
- * Reads every row of the Metrics tab, each as {company, period, metric, value, unit}.
- * Mirrors get_all_metric_rows() in sheets_client.py. Used by Dashboard.gs to build charts.
+ * Reads every row of the Metrics tab, each as {company, period, metric, value, unit}. Used by
+ * Dashboard.gs to build charts.
  *
  * period is normalized back to a plain string here — see normalizePeriodValue_() for why a
- * "YYYY-MM" period can come back from the Sheet as a Date object instead of the string Claude
- * returned.
+ * date-shaped period (a weekly reporter's "YYYY-MM-DD" week-start, or "YYYY-MM") can come back
+ * from the Sheet as a Date object instead of the string Claude returned.
  */
 function getAllMetricRows_() {
   return getRowsAsObjects_(getMetricsSheet_()).map(function (row) {
@@ -155,17 +155,22 @@ function getAllMetricRows_() {
 }
 
 /**
- * A period like "2026-06" looks like a date to Google Sheets, which silently converts the cell
- * to a real Date value on write — Apps Script then reads it back as a JS Date object, not the
- * original string. Left alone, that breaks period sorting (Date objects coerce to strings via
- * Date.toString(), which starts with a day-of-week name — "Wed Apr...", "Mon Jun..." — so a
- * plain lexicographic sort scrambles chronological order) and shows a full timestamp with a GMT
- * offset wherever the period is displayed. This converts any Date-typed period back to its
- * plain "YYYY-MM" form; a genuinely non-date period ("2026-Q2", "unknown") passes through as-is.
+ * A period like "2026-06" or "2026-07-13" looks like a date to Google Sheets, which silently
+ * converts the cell to a real Date value on write — Apps Script then reads it back as a JS Date
+ * object, not the original string. Left alone, that breaks period sorting (Date objects coerce
+ * to strings via Date.toString(), which starts with a day-of-week name — "Wed Apr...", "Mon
+ * Jun..." — so a plain lexicographic sort scrambles chronological order) and shows a full
+ * timestamp with a GMT offset wherever the period is displayed. This converts any Date-typed
+ * period back to plain "YYYY-MM-DD" text; a genuinely non-date period ("2026-Q2", "unknown")
+ * passes through as-is.
+ *
+ * appendMetricRows_() already force-formats the period column as plain text before writing, so
+ * this is a defensive fallback for rows written before that fix existed (or a manual paste that
+ * re-triggers Sheets' auto-conversion) — not the primary guard.
  */
 function normalizePeriodValue_(value) {
   if (Object.prototype.toString.call(value) === '[object Date]') {
-    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM');
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
   return String(value);
 }
@@ -181,21 +186,22 @@ function normalizePeriodValue_(value) {
  *
  * This is an upsert, not a blind append: if a row already exists for the same
  * (company, period, metric), its value/unit/source fields are overwritten in place instead of
- * adding a duplicate row. This matters because a founder who emails more often than once a month
- * still gets every update normalized to the same "YYYY-MM" period (see EXTRACTION_PROMPT in
- * Prompts.gs) — without upserting, four weekly emails in one month would produce four separate
- * rows for that month instead of one.
+ * adding a duplicate row. period is whatever granularity EXTRACTION_PROMPT (Prompts.gs) actually
+ * normalized to for that email — a week-start date for a weekly reporter, "YYYY-MM" for a
+ * monthly one — so this still collapses correctly if a founder ever sends two updates covering
+ * the exact same period (e.g. a same-week correction email), without collapsing genuinely
+ * distinct weeks into one row the way a fixed monthly bucket used to.
  *
- * "Latest reading wins" for a given month, by design: callers process emails in chronological
+ * "Latest reading wins" for a given period, by design: callers process emails in chronological
  * order (fetchNewEmails_() in GmailClient.gs sorts oldest-first), so whichever email is handed
- * to this function last for a given month is genuinely the most recent one. If a later email in
- * the same month simply doesn't mention a metric, nothing gets written for it — the existing,
- * still-most-recent-available value (and its original source email) from an earlier email in
- * that month is left untouched rather than being blanked out.
+ * to this function last for a given period is genuinely the most recent one. If a later email
+ * covering the same period simply doesn't mention a metric, nothing gets written for it — the
+ * existing, still-most-recent-available value (and its original source email) from an earlier
+ * email for that period is left untouched rather than being blanked out.
  *
  * The period column is force-formatted to plain text before any new row is written, so Sheets
- * never gets the chance to auto-convert a "YYYY-MM" string into a Date-typed cell in the first
- * place (see normalizePeriodValue_() for what happens downstream if it does).
+ * never gets the chance to auto-convert a date-shaped period string into a Date-typed cell in
+ * the first place (see normalizePeriodValue_() for what happens downstream if it does).
  */
 function appendMetricRows_(rows) {
   if (!rows || rows.length === 0) return;
@@ -245,9 +251,9 @@ function metricsColumnIndex_(sheet) {
 }
 
 /**
- * Joined with " :: " — a sequence that should never appear in a company name, a "YYYY-MM"
- * period, or a snake_case metric name — so two genuinely different (company, period, metric)
- * triples can never collide onto the same key.
+ * Joined with " :: " — a sequence that should never appear in a company name, a period string
+ * ("YYYY-MM", "YYYY-MM-DD", "YYYY-Q#"), or a snake_case metric name — so two genuinely different
+ * (company, period, metric) triples can never collide onto the same key.
  */
 function metricRowKey_(company, period, metric) {
   return company + ' :: ' + period + ' :: ' + metric;

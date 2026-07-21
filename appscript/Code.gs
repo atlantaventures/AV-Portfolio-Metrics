@@ -17,7 +17,7 @@ function onOpen() {
 /**
  * Menu item: "Portfolio Pulse -> Onboard company...". The only way onboarding ever happens —
  * always one company, always by the exact name typed here, never automatic and never triggered
- * by the biweekly sync. See onboardCompanyByName_() in Pipeline.gs for why: a deliberate,
+ * by the weekly sync. See onboardCompanyByName_() in Pipeline.gs for why: a deliberate,
  * single-company action keeps a backfill's worst-case running time bounded and predictable, and
  * gives a specific reason whenever it can't proceed instead of silently skipping a company in a
  * log nobody reads.
@@ -58,28 +58,26 @@ function onboardCompanyPrompt() {
 }
 
 /**
- * Creates (or replaces) a biweekly (every-2-weeks) time-driven trigger for runPortfolioPulse().
- * Run this once from the script editor (select installBiweeklyTrigger in the function
- * dropdown, click Run).
+ * Creates (or replaces) a weekly time-driven trigger for runPortfolioPulse(). Run this once from
+ * the script editor (select installWeeklyTrigger in the function dropdown, click Run) — or set
+ * the same cadence by hand from the Triggers page's "Week timer" option; this function just also
+ * deletes any pre-existing runPortfolioPulse trigger first, so re-running it (e.g. to change the
+ * day/hour) replaces the old one instead of creating a duplicate.
  *
- * This can't be set up via the Triggers page UI — its "Week timer" option only offers "every
- * week," with no every-N-weeks choice — so the convenience function is the only way to get this
- * exact cadence. See SETUP.md for why biweekly, not daily or weekly: founders sending weekly
- * updates plus a boss who won't check in that often makes daily syncing wasteful API cost for
- * no benefit, and weekly would mean the trigger's "since last run" window usually captures
- * exactly one email — biweekly gives a bit of buffer without losing anything, since
- * appendMetricRows_() in SheetsClient.gs already collapses multiple readings in the same month
- * down to the most recent one regardless of how many land in a single sync.
+ * Weekly, not biweekly: founders report on a weekly cadence, and since each Metrics row is now
+ * keyed to the actual reporting period (a week-start date for a weekly reporter — see
+ * EXTRACTION_PROMPT in Prompts.gs), a sync gap wider than a week has no benefit and just delays
+ * how current the dashboard looks.
  */
-function installBiweeklyTrigger() {
+function installWeeklyTrigger() {
   ScriptTriggers_deleteTriggersFor_('runPortfolioPulse');
   ScriptApp.newTrigger('runPortfolioPulse')
     .timeBased()
-    .everyWeeks(2)
+    .everyWeeks(1)
     .onWeekDay(ScriptApp.WeekDay.MONDAY)
     .atHour(6)
     .create();
-  Logger.log('Biweekly trigger installed: runPortfolioPulse will run every other Monday, around 6am.');
+  Logger.log('Weekly trigger installed: runPortfolioPulse will run every Monday, around 6am.');
 }
 
 function ScriptTriggers_deleteTriggersFor_(functionName) {

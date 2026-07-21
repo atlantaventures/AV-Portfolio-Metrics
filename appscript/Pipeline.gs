@@ -8,7 +8,7 @@
  *   SheetsClient.gs). This never runs on a schedule and never processes more than one company,
  *   specifically so its worst-case running time is bounded and nothing else is competing for the
  *   same 6-minute Apps Script execution window.
- * - Sync: runs on the biweekly trigger (or "Sync now"), and only ever does incremental syncing
+ * - Sync: runs on the weekly trigger (or "Sync now"), and only ever does incremental syncing
  *   for companies that already have a schema — it never onboards anything, no matter how many
  *   Registry rows are sitting with a blank schema_json. Searches Gmail only for messages since
  *   the last global run (the Meta tab's "Last synced" cell), never a wide backfill window.
@@ -143,7 +143,7 @@ function syncActiveCompanies_(since) {
 }
 
 /**
- * Scheduled entry point — the function the biweekly time-driven trigger calls (see SETUP.md).
+ * Scheduled entry point — the function the weekly time-driven trigger calls (see SETUP.md).
  * Sync-only: identical to clicking "Sync now" by hand, just automatic. Onboarding never runs
  * from here, no matter how many Registry rows have a blank schema_json — see the top-of-file
  * comment for why.

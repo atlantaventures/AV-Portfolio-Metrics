@@ -1,9 +1,11 @@
 /**
  * Dashboard — one tab per active company (not one shared "Dashboard" tab). Each company's tab
  * has:
- *  - a visible (Period x metric) pivot table, number-formatted per metric's unit, so exact data
- *    points are readable at a glance instead of only on chart hover
- *  - a slicer on Period that filters that table AND every chart built from it — Sheets applies
+ *  - a visible (Date x metric) pivot table, number-formatted per metric's unit, so exact data
+ *    points are readable at a glance instead of only on chart hover. The Date column shows the
+ *    exact source-email date (MM/DD/YYYY), not the coarser period bucket used for grouping —
+ *    see periodDateLabels_().
+ *  - a slicer on Date that filters that table AND every chart built from it — Sheets applies
  *    a slicer's row-filtering to any chart sourced from the same range, so one control narrows
  *    both the table and every chart on the tab at once
  *  - one line chart per metric, each a fixed pixel size and stacked with a fixed pixel gap, so
@@ -27,6 +29,11 @@
  * Scorecard cards are still not scriptable — Apps Script's chart-building API has no SCORECARD
  * type as of this writing (verified against the current Charts.ChartType docs). Add those by
  * hand per company tab if you want them; see SETUP.md.
+ *
+ * rebuildDashboard_() also refreshes a small summary table on the Meta tab (see
+ * updateMetaSummaryTable_() below) — one row per active company with its latest primary-revenue
+ * reading, so the single most important number per company is visible without opening any
+ * company tab.
  */
 
 // Column far to the right of any real content — used to tag a tab as "owned" by this script,
@@ -74,6 +81,95 @@ function rebuildDashboard_() {
   });
 
   enforceTabOrder_();
+  updateMetaSummaryTable_(companies, allRows);
+}
+
+// Left blank below the Meta tab's "Last synced" cell (row 1) as a visual gap.
+var META_SUMMARY_START_ROW = 3;
+var META_SUMMARY_HEADER = ['Company', 'Date', 'Value'];
+
+/**
+ * Writes a small "latest reading per company" table to the Meta tab — one row per active
+ * company, its primary-revenue reading (whichever metric its schema tags "primary_revenue" —
+ * see primaryRevenueMetricName_()) and the exact date of the email that reading came from. No
+ * metric name column: this table is deliberately just company/date/value, on the assumption
+ * that whoever's glancing at this already knows what each company's headline number is.
+ *
+ * Refreshed by rebuildDashboard_() — i.e. on every "Sync now"/scheduled sync AND every
+ * onboarding run, same as the rest of the dashboard.
+ */
+function updateMetaSummaryTable_(companies, allRows) {
+  var sheet = getMetaSheet_();
+  clearMetaSummaryTable_(sheet);
+
+  sheet.getRange(META_SUMMARY_START_ROW, 1)
+    .setValue('Latest primary revenue metric per company')
+    .setFontWeight('bold');
+  sheet.getRange(META_SUMMARY_START_ROW + 1, 1, 1, META_SUMMARY_HEADER.length)
+    .setValues([META_SUMMARY_HEADER])
+    .setFontWeight('bold');
+
+  if (companies.length === 0) return;
+
+  var dataStartRow = META_SUMMARY_START_ROW + 2;
+  companies.forEach(function (company, index) {
+    var row = dataStartRow + index;
+    var metricName = primaryRevenueMetricName_(company.schema);
+
+    if (!metricName) {
+      sheet.getRange(row, 1, 1, META_SUMMARY_HEADER.length).setValues([[company.company, '(no primary revenue metric)', '']]);
+      return;
+    }
+
+    var latest = latestMetricReading_(allRows, company.company, metricName);
+    if (!latest) {
+      sheet.getRange(row, 1, 1, META_SUMMARY_HEADER.length).setValues([[company.company, '(no data yet)', '']]);
+      return;
+    }
+
+    sheet.getRange(row, 1, 1, META_SUMMARY_HEADER.length).setValues([[company.company, exactDateLabel_(latest), latest.value]]);
+    var unit = (company.schema[metricName] && company.schema[metricName].unit) || '';
+    sheet.getRange(row, 3).setNumberFormat(cellFormatForUnit_(unit));
+  });
+
+  sheet.autoResizeColumns(1, META_SUMMARY_HEADER.length);
+}
+
+// Wider than META_SUMMARY_HEADER.length on purpose: clears stray columns left over from a
+// previous rebuild under a wider table shape (e.g. the old Company/Metric/Period/Value layout),
+// not just whatever the current header happens to be.
+var META_SUMMARY_CLEAR_COLS = 6;
+
+/** Clears whatever the summary table's previous rebuild left behind, so a shrinking company list or a shrinking table shape doesn't leave stale cells. */
+function clearMetaSummaryTable_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= META_SUMMARY_START_ROW) {
+    sheet.getRange(META_SUMMARY_START_ROW, 1, lastRow - META_SUMMARY_START_ROW + 1, META_SUMMARY_CLEAR_COLS).clear();
+  }
+}
+
+/** The metric name in `schema` tagged category "primary_revenue", or null if none is. */
+function primaryRevenueMetricName_(schema) {
+  var metricNames = Object.keys(schema);
+  for (var i = 0; i < metricNames.length; i++) {
+    if (schema[metricNames[i]] && schema[metricNames[i]].category === 'primary_revenue') {
+      return metricNames[i];
+    }
+  }
+  return null;
+}
+
+/** The most recent (by period, lexicographically) numeric reading of `metricName` for `companyName`, or null. */
+function latestMetricReading_(allRows, companyName, metricName) {
+  var matches = allRows.filter(function (row) {
+    return row.company === companyName && row.metric === metricName && typeof row.value === 'number';
+  });
+  if (matches.length === 0) return null;
+
+  matches.sort(function (a, b) {
+    return a.period < b.period ? -1 : a.period > b.period ? 1 : 0;
+  });
+  return matches[matches.length - 1];
 }
 
 function removeStaleCompanyTabs_(activeTabNames) {
@@ -154,16 +250,17 @@ function buildCompanyTab_(company, metricNames, series) {
 
   var periods = distinctSortedPeriods_(series);
   var byPeriod = buildPeriodLookup_(series, periods);
-  var pivotRange = writeCompanyPivotTable_(sheet, company, metricNames, periods, byPeriod);
+  var periodLabels = periodDateLabels_(series, periods);
+  var pivotRange = writeCompanyPivotTable_(sheet, company, metricNames, periods, byPeriod, periodLabels);
 
   if (periods.length === 0) {
     sheet.getRange(2, 1).setValue('No metric data yet — check back after the next sync.');
     return;
   }
 
-  sheet.getRange(2, 1).setValue('Use the slicer to filter which periods the table and charts below show.');
+  sheet.getRange(2, 1).setValue('Use the slicer to filter which dates the table and charts below show.');
 
-  var extremeMoves = flagExtremeMoves_(sheet, metricNames, periods, byPeriod);
+  var extremeMoves = flagExtremeMoves_(sheet, metricNames, periods, byPeriod, periodLabels);
   var movesSummary = extremeMovesSummary_(extremeMoves);
   if (movesSummary) {
     sheet.getRange(3, 1).setValue(movesSummary).setFontColor('#B45F06').setFontWeight('bold');
@@ -180,7 +277,7 @@ function buildCompanyTab_(company, metricNames, series) {
  * caller can also render a one-line summary above the table; a human glancing at the sheet
  * shouldn't have to scan every cell to notice a real swing.
  */
-function flagExtremeMoves_(sheet, metricNames, periods, byPeriod) {
+function flagExtremeMoves_(sheet, metricNames, periods, byPeriod, periodLabels) {
   var moves = [];
 
   metricNames.forEach(function (metricName, metricIndex) {
@@ -199,8 +296,8 @@ function flagExtremeMoves_(sheet, metricNames, periods, byPeriod) {
           sheet.getRange(row, col).setBackground(EXTREME_MOVE_COLOR);
           moves.push({
             metricName: metricName,
-            fromPeriod: previousPeriod,
-            toPeriod: period,
+            fromDate: periodLabels[previousPeriod],
+            toDate: periodLabels[period],
             pctChange: pctChange,
           });
         }
@@ -219,7 +316,7 @@ function extremeMovesSummary_(moves) {
   var parts = moves.map(function (move) {
     var sign = move.pctChange >= 0 ? '+' : '';
     return move.metricName + ' ' + sign + Math.round(move.pctChange * 100) + '% (' +
-      move.fromPeriod + ' → ' + move.toPeriod + ')';
+      move.fromDate + ' → ' + move.toDate + ')';
   });
   return '⚠ Large moves (' + Math.round(EXTREME_MOVE_THRESHOLD * 100) + '%+): ' + parts.join('; ');
 }
@@ -245,16 +342,66 @@ function buildPeriodLookup_(series, periods) {
 }
 
 /**
- * Writes a wide (Period, metric1, metric2, ...) table starting at PIVOT_START_ROW/COL and
- * returns its full range (header + data rows). Each metric column is number-formatted per its
- * declared unit so the visible table never shows scientific notation.
+ * {period: "MM/DD/YYYY"} — the exact date of the email that produced each period's data, not
+ * the (coarser) period bucket itself. A period bucket can in principle hold rows from more than
+ * one email (e.g. a same-week correction email that only restates one of several metrics — see
+ * appendMetricRows_() in SheetsClient.gs), so this takes the latest source_email_date among that
+ * period's rows, consistent with "latest reading wins" everywhere else in this pipeline.
+ *
+ * Falls back to the raw period string if source_email_date is missing entirely (the column is
+ * optional — see SETUP.md) or unparseable, so an older Sheet without that column still renders.
  */
-function writeCompanyPivotTable_(sheet, company, metricNames, periods, byPeriod) {
-  var header = ['Period'].concat(metricNames);
+function periodDateLabels_(series, periods) {
+  var latestDateByPeriod = {};
+  series.forEach(function (row) {
+    var raw = row.source_email_date;
+    if (!raw) return;
+    var date = raw instanceof Date ? raw : new Date(raw);
+    if (isNaN(date.getTime())) return;
+    var existing = latestDateByPeriod[row.period];
+    if (!existing || date.getTime() > existing.getTime()) {
+      latestDateByPeriod[row.period] = date;
+    }
+  });
+
+  var labels = {};
+  periods.forEach(function (period) {
+    var date = latestDateByPeriod[period];
+    labels[period] = date ? formatDateLabel_(date) : period;
+  });
+  return labels;
+}
+
+/** "MM/DD/YYYY" for a real Date. */
+function formatDateLabel_(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'MM/dd/yyyy');
+}
+
+/**
+ * A single row's exact source-email date as "MM/DD/YYYY" (see formatDateLabel_()), or its raw
+ * period string if source_email_date is missing/unparseable. Used by the Meta tab's summary
+ * table, which shows one row (one email's reading) at a time rather than a whole period's worth
+ * — see periodDateLabels_() for the equivalent when multiple rows share a period bucket.
+ */
+function exactDateLabel_(row) {
+  var raw = row.source_email_date;
+  var date = raw ? (raw instanceof Date ? raw : new Date(raw)) : null;
+  return date && !isNaN(date.getTime()) ? formatDateLabel_(date) : row.period;
+}
+
+/**
+ * Writes a wide (Date, metric1, metric2, ...) table starting at PIVOT_START_ROW/COL and
+ * returns its full range (header + data rows). Each metric column is number-formatted per its
+ * declared unit so the visible table never shows scientific notation. The first column shows the
+ * exact source-email date (see periodDateLabels_()) rather than the period bucket string — rows
+ * are still keyed and ordered by the underlying period, only the displayed label changes.
+ */
+function writeCompanyPivotTable_(sheet, company, metricNames, periods, byPeriod, periodLabels) {
+  var header = ['Date'].concat(metricNames);
   sheet.getRange(PIVOT_START_ROW, PIVOT_START_COL, 1, header.length).setValues([header]).setFontWeight('bold');
 
   var values = periods.map(function (period) {
-    return [period].concat(
+    return [periodLabels[period]].concat(
       metricNames.map(function (metricName) {
         return Object.prototype.hasOwnProperty.call(byPeriod[period], metricName)
           ? byPeriod[period][metricName]
@@ -330,7 +477,7 @@ function numericViewWindowForMetric_(metricName, periods, byPeriod) {
 }
 
 /**
- * One slicer, anchored just past the table, filtering the Period column (column 1 of
+ * One slicer, anchored just past the table, filtering the Date column (column 1 of
  * pivotRange). Because it shares pivotRange's rows with every chart built below, filtering it
  * filters the table and every chart together.
  */
@@ -338,7 +485,7 @@ function insertPeriodSlicer_(sheet, pivotRange, numMetrics) {
   var anchorCol = PIVOT_START_COL + 1 + numMetrics + SLICER_GAP_COLS;
   var slicer = sheet.insertSlicer(pivotRange, PIVOT_START_ROW, anchorCol);
   slicer.setColumnFilterCriteria(1, SpreadsheetApp.newFilterCriteria().build());
-  slicer.setTitle('Filter by period');
+  slicer.setTitle('Filter by date');
 }
 
 /**

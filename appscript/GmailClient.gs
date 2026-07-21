@@ -69,11 +69,11 @@ function searchThreadsPaged_(query) {
  * exact filter on the message date afterward, or the day's earlier messages would be re-pulled.
  *
  * The oldest-first sort matters beyond just display order: Gmail returns threads newest-first,
- * and a sender who emails multiple times a month (e.g. weekly updates) has those all land in
- * the same "YYYY-MM" extraction period. appendMetricRows_() in SheetsClient.gs upserts rather
- * than appends, so whichever email is processed *last* for a given month wins — sorting here
- * ensures "last processed" always means "most recent by date," not "whichever order Gmail's
- * thread listing happened to return."
+ * and a sender who emails more than once for the same reporting period (e.g. a same-week
+ * correction) has both land on the same extraction period. appendMetricRows_() in
+ * SheetsClient.gs upserts rather than appends, so whichever email is processed *last* for a
+ * given period wins — sorting here ensures "last processed" always means "most recent by date,"
+ * not "whichever order Gmail's thread listing happened to return."
  */
 function fetchNewEmails_(senderEmail, sinceDate, subjectHint) {
   var query = 'from:' + senderEmail + ' after:' + formatDateForGmailQuery_(sinceDate);

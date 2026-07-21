@@ -14,8 +14,10 @@ versions can run side by side — see the note at the end about eventually retir
   `priorities`), plus one new optional column: `backfill_months`.
 - **Metrics tab** — same columns as today (`company`, `period`, `metric`, `value`, `unit`), plus
   two new optional columns: `source_email_subject`, `source_email_date`.
-- **Meta tab** — new. One cell, "Last synced: ...", so anyone can open the Sheet and see when it
-  last ran without touching the script editor.
+- **Meta tab** — new. A "Last synced: ..." cell, so anyone can open the Sheet and see when it
+  last ran without touching the script editor, plus a small table refreshed on every rebuild
+  showing each active company's latest primary-revenue reading (metric, period, value) — see
+  `updateMetaSummaryTable_()` in `Dashboard.gs`.
 - **One tab per company** — new, auto-generated. Each active company gets its own tab (named
   after the company) with a data table and charts — see step 8.
 
@@ -66,6 +68,12 @@ script, and could get pasted into a copy of the Sheet by accident):
    Python `.env` file used).
 4. Save.
 
+**Same place, optional: overriding a model.** `Models.gs` hardcodes a default model per job
+(relevance filter, extraction, onboarding), but if Anthropic ever retires one of those snapshots,
+you don't need to edit code and redeploy — add a Script Property named `RELEVANCE_MODEL`,
+`EXTRACTION_MODEL`, or `ONBOARDING_MODEL` (same screen as above) with the new model ID, and that
+job picks it up on its next run. Leave them unset to keep using the built-in defaults.
+
 ## 4. Authorize Gmail and Sheets access (one click, once)
 
 1. Back in the script editor, pick any function in the dropdown next to the "Run" button —
@@ -84,7 +92,7 @@ script, and could get pasted into a copy of the Sheet by accident):
      meaning only *this* Sheet, not every Sheet in your Drive.
    - **Connect to an external service** — this is what lets `ClaudeClient.gs` call the Anthropic
      API via `UrlFetchApp`.
-   - **Manage your triggers** — needed for the `installBiweeklyTrigger()` function in step 6.
+   - **Manage your triggers** — needed for the `installWeeklyTrigger()` function in step 6.
 4. Click **Allow**. This happens once per person who runs the script (same idea as the Python
    version's `token.json` — except here Google manages that state for you, there's no file to
    copy around).
@@ -111,30 +119,25 @@ already has the right columns — you only need to add one:
 
 ## 6. Set up the scheduled run
 
-**Recommended cadence: every 2 weeks (biweekly), not daily.** Founders sending weekly updates
-plus a boss who won't check the dashboard weekly means a daily sync buys nothing — it's just
-extra Gmail-search-and-Claude-API cost checking for emails that mostly aren't there yet. Weekly
-would work, but each sync would usually see just one new email per company; biweekly gives a
-little buffer without losing any data — `appendMetricRows_()` in `SheetsClient.gs` already
-collapses however many readings land in the same month down to the single most recent one,
-regardless of whether they arrive in one sync or several.
+**Recommended cadence: weekly, not daily.** Founders report on a weekly cadence, and each
+Metrics row is keyed to the actual reporting period a founder used — a week-start date for a
+weekly reporter, "YYYY-MM" for a monthly one (see EXTRACTION_PROMPT in `Prompts.gs`) — so a
+weekly sync keeps pace with the data without missing anything. Daily buys nothing beyond that:
+just extra Gmail-search-and-Claude-API cost checking for emails that mostly aren't there yet.
 
-**This cadence can only be set up via a one-time function run — not the Triggers page UI.** The
-Triggers page's "Week timer" option only offers "run every week," with no every-N-weeks choice,
-so `everyWeeks(2)` has to be set programmatically:
-
-1. In the script editor, pick `installBiweeklyTrigger` from the function dropdown.
+1. In the script editor, pick `installWeeklyTrigger` from the function dropdown.
 2. Click **Run**. You'll see the same one-time authorization dialog from step 4 if you haven't
    already granted access.
-3. Done — this creates a trigger that fires every other Monday around 6am. Running it again
-   later (e.g. to change the day/hour, or just to confirm it's still there) replaces the old one
+3. Done — this creates a trigger that fires every Monday around 6am. Running it again later
+   (e.g. to change the day/hour, or just to confirm it's still there) replaces the old one
    cleanly rather than creating a duplicate.
 
 You can see (and delete, or change) the resulting trigger afterward from the clock icon
-(**Triggers**) in the left sidebar — it's not hidden anywhere, it's just that *creating* one on
-this specific cadence needs the function rather than the UI. If you ever do want daily or weekly
-instead, the Triggers page's **+ Add Trigger** → Function: `runPortfolioPulse` → Time-driven →
-**Day timer** or **Week timer** covers those two cadences directly, no code required.
+(**Triggers**) in the left sidebar. `installWeeklyTrigger` is just a convenience wrapper — the
+same cadence can be set up directly from the Triggers page's **+ Add Trigger** → Function:
+`runPortfolioPulse` → Time-driven → **Week timer**, no code required; the only reason to prefer
+the function is that it deletes any old `runPortfolioPulse` trigger first, so you don't end up
+with two firing side by side.
 
 Whatever cadence you pick, `runPortfolioPulse` is the function that should run on it. It only
 ever syncs already-onboarded companies — it never onboards anything, no matter how many Registry

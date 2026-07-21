@@ -1,8 +1,9 @@
 /**
- * Prompt templates for the portfolio tracker — ported verbatim from config/prompts.py.
- *
- * Do not rewrite or "improve" the wording here — it's already tuned. Diff this file against
- * config/prompts.py if the Python prompts ever change.
+ * Prompt templates for the portfolio tracker — originally ported verbatim from
+ * config/prompts.py (since deleted; the Python pipeline has been fully retired in favor of
+ * this Apps Script version — see README.md). EXTRACTION_PROMPT's period-normalization rule was
+ * deliberately changed from the ported original on 2026-07-21 to preserve weekly data points
+ * instead of collapsing everything to a monthly bucket — see that prompt's comment below.
  *
  * Three prompts, three jobs:
  * - ONBOARDING_PROMPT: run once per company, on one sample email plus the human's stated
@@ -97,10 +98,13 @@ var EXTRACTION_PROMPT = 'You are extracting structured performance data from a f
   '  the metrics listed above, not everything the founder reports.\n' +
   '- Determine the reporting period this email covers, using the email\'s send date above to resolve relative\n' +
   '  or year-less mentions (e.g. an email sent in 2026 that just says "June" means June 2026). Normalize to\n' +
-  '  "YYYY-MM" for the month this email\'s data belongs to, or "YYYY-Q#" only if the company reports purely on\n' +
-  '  a quarterly cadence with no monthly figures at all. A weekly update still belongs to "YYYY-MM" — use the\n' +
-  '  month it falls in, not a week number; this tool tracks monthly trends, not weekly ones. If genuinely not\n' +
-  '  determinable, use "unknown".\n' +
+  '  whatever granularity this founder is actually reporting at — do not collapse a finer-grained update into\n' +
+  '  a coarser bucket than what was actually reported:\n' +
+  '  - Weekly update (covers roughly a 7-day span): use that week\'s Monday date, "YYYY-MM-DD".\n' +
+  '  - Monthly update: use "YYYY-MM".\n' +
+  '  - Quarterly update (the company reports purely on a quarterly cadence with no monthly or weekly figures\n' +
+  '    at all): use "YYYY-Q#".\n' +
+  '  If genuinely not determinable, use "unknown".\n' +
   '\n' +
   'Respond with ONLY valid JSON, no markdown fences, no preamble, in this exact shape:\n' +
   '{\n' +
